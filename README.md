@@ -37,7 +37,7 @@ cd aecho
 aecho --version
 ```
 
-Or in one line, without cloning (read [install.sh](install.sh) first, it is 90 lines):
+Or in one line, without cloning (read [install.sh](install.sh) first, it is under 100 lines):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nandomoreirame/aecho/main/install.sh | bash
