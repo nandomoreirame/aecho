@@ -14,6 +14,8 @@
 #
 # Downloads use a file:// AECHO_URL, so the tests never touch the network.
 
+bats_require_minimum_version 1.5.0
+
 SCRIPT="$BATS_TEST_DIRNAME/../install.sh"
 AECHO="$BATS_TEST_DIRNAME/../aecho"
 
@@ -26,6 +28,20 @@ setup() {
     [ "$status" -eq 0 ]
     [ -x "$PREFIX/bin/aecho" ]
     cmp -s "$AECHO" "$PREFIX/bin/aecho"
+}
+
+@test "install: greets with an AECHO banner rendered by the installed binary" {
+    run bash "$SCRIPT" --prefix "$PREFIX"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"$("$PREFIX/bin/aecho" AECHO)"* ]]
+    [[ "$output" == *"Installed $PREFIX/bin/aecho"* ]]
+}
+
+@test "install: separates the banner from the command line with a blank line" {
+    run --keep-empty-lines bash "$SCRIPT" --prefix "$PREFIX"
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "" ]
+    [ "${lines[1]}" = "$("$PREFIX/bin/aecho" AECHO | head -n1)" ]
 }
 
 @test "install: downloads from AECHO_URL when there is no local aecho" {

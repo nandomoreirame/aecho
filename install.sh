@@ -82,6 +82,10 @@ fi
 chmod 755 "$tmp"
 mv -f "$tmp" "$target"
 trap - EXIT
+# The banner doubles as a smoke test; an old Bash failing it must not fail the install.
+if banner="$("$target" AECHO 2>/dev/null)"; then
+    printf '\n%s\n\n' "$banner"
+fi
 printf 'Installed %s\n' "$target"
 
 # shellcheck disable=SC2016  # $PATH is meant literally in the hint
