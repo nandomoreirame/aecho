@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# echo, but as a big block-letter banner.
+#
+# Self-contained 5-row font (no figlet/toilet needed). Arguments are joined with
+# spaces like echo; with no argument the text comes from stdin. Lowercase and
+# pt-BR accented letters use the uppercase base glyph, unknown characters
+# render as '?'. Words wrap to the terminal width ($COLUMNS, then tput, then 80).
+#
+# Usage: aecho [-c CHAR] [--] TEXT...
+#        command | aecho
+set -eo pipefail
+
+readonly VERSION="0.1.0"
+
+# Multibyte-safe ${s:i:1} even when the caller runs under LANG=C.
+export LC_ALL=C.UTF-8
+
+usage() {
+    cat <<'EOF'
+Usage: aecho [-c CHAR] [--] TEXT...
+       command | aecho
+
+Print TEXT as a block-letter ASCII banner.
+
+  -c CHAR   fill character (default: █)
+  -h        show this help
+  -v        show the version
+EOF
+}
+
+declare -A G=(
+    [A]=" ███ |█   █|█████|█   █|█   █"
+    [B]="████ |█   █|████ |█   █|████ "
+    [C]=" ████|█    |█    |█    | ████"
+    [D]="████ |█   █|█   █|█   █|████ "
+    [E]="█████|█    |████ |█    |█████"
+    [F]="█████|█    |████ |█    |█    "
+    [G]=" ████|█    |█  ██|█   █| ████"
+    [H]="█   █|█   █|█████|█   █|█   █"
+    [I]="███| █ | █ | █ |███"
+    [J]="  ███|   █ |   █ |█  █ | ██  "
+    [K]="█   █|█  █ |███  |█  █ |█   █"
+    [L]="█    |█    |█    |█    |█████"
+    [M]="█   █|██ ██|█ █ █|█   █|█   █"
+    [N]="█   █|██  █|█ █ █|█  ██|█   █"
+    [O]=" ███ |█   █|█   █|█   █| ███ "
+    [P]="████ |█   █|████ |█    |█    "
+    [Q]=" ███ |█   █|█ █ █|█  █ | ██ █"
+    [R]="████ |█   █|████ |█  █ |█   █"
+    [S]=" ████|█    | ███ |    █|████ "
+    [T]="█████|  █  |  █  |  █  |  █  "
+    [U]="█   █|█   █|█   █|█   █| ███ "
+    [V]="█   █|█   █|█   █| █ █ |  █  "
+    [W]="█   █|█   █|█ █ █|██ ██|█   █"
+    [X]="█   █| █ █ |  █  | █ █ |█   █"
+    [Y]="█   █| █ █ |  █  |  █  |  █  "
+    [Z]="█████|   █ |  █  | █   |█████"
+    [0]=" ███ |█  ██|█ █ █|██  █| ███ "
+    [1]=" █ |██ | █ | █ |███"
+    [2]="████ |    █| ███ |█    |█████"
+    [3]="████ |    █| ███ |    █|████ "
+    [4]="█   █|█   █|█████|    █|    █"
+    [5]="█████|█    |████ |    █|████ "
+    [6]=" ███ |█    |████ |█   █| ███ "
+    [7]="█████|    █|   █ |  █  |  █  "
+    [8]=" ███ |█   █| ███ |█   █| ███ "
+    [9]=" ███ |█   █| ████|    █| ███ "
+    [" "]="   |   |   |   |   "
+    ["!"]="█|█|█| |█"
+    ["?"]="████ |    █|  ██ |     |  █  "
+    ["."]=" | | | |█"
+    [","]="  |  |  | █|█ "
+    [":"]=" |█| |█| "
+    [";"]="  | █|  | █|█ "
+    ["-"]="    |    |████|    |    "
+    ["_"]="     |     |     |     |█████"
+    ["+"]="     |  █  |█████|  █  |     "
+    ["="]="    |████|    |████|    "
+    ["'"]="█|█| | | "
+    ['"']="█ █|█ █|   |   |   "
+    ["/"]="    █|   █ |  █  | █   |█    "
+    ["("]=" █|█ |█ |█ | █"
+    [")"]="█ | █| █| █|█ "
+    ["*"]="     |█ █ █| ███ |█ █ █|     "
+    ["#"]=" █ █ |█████| █ █ |█████| █ █ "
+    ["<"]="  █| █ |█  | █ |  █"
+    [">"]="█  | █ |  █| █ |█  "
+)
+
+normalize() {
+    local c="$1"
+    case "$c" in
+        [áàâãäÁÀÂÃÄ]) c=A ;;
+        [éèêëÉÈÊË]) c=E ;;
+        [íìîïÍÌÎÏ]) c=I ;;
+        [óòôõöÓÒÔÕÖ]) c=O ;;
+        [úùûüÚÙÛÜ]) c=U ;;
+        [çÇ]) c=C ;;
+        [ñÑ]) c=N ;;
+        *) c="${c^^}" ;;
+    esac
+    [[ -n "${G[$c]+set}" ]] || c="?"
+    printf '%s' "$c"
+}
+
+# Width of a rendered string: each glyph plus its one-column gap.
+text_width() {
+    local text="$1" w=0 i c rows
+    for ((i = 0; i < ${#text}; i++)); do
+        c="$(normalize "${text:i:1}")"
+        IFS='|' read -ra rows <<<"${G[$c]}"
+        w=$((w + ${#rows[0]} + 1))
+    done
+    printf '%d' "$w"
+}
+
+render() {
+    local text="$1" i r c
+    local -a rows out=("" "" "" "" "")
+    for ((i = 0; i < ${#text}; i++)); do
+        c="$(normalize "${text:i:1}")"
+        IFS='|' read -ra rows <<<"${G[$c]}"
+        for r in 0 1 2 3 4; do
+            out[r]+="${rows[r]} "
+        done
+    done
+    for r in 0 1 2 3 4; do
+        local row="${out[r]%"${out[r]##*[! ]}"}"
+        printf '%s\n' "${row//█/$fill}"
+    done
+}
+
+terminal_width() {
+    if [[ "$COLUMNS" =~ ^[0-9]+$ ]] && ((COLUMNS > 0)); then
+        printf '%d' "$COLUMNS"
+    elif [[ -t 1 ]] && cols="$(tput cols 2>/dev/null)" && [[ -n "$cols" ]]; then
+        printf '%d' "$cols"
+    else
+        printf '80'
+    fi
+}
+
+fill="█"
+while (($#)); do
+    case "$1" in
+        -h | --help) usage; exit 0 ;;
+        -v | --version) printf 'aecho %s\n' "$VERSION"; exit 0 ;;
+        -c)
+            [[ -n "${2:-}" ]] || { usage >&2; exit 2; }
+            fill="${2:0:1}"
+            shift 2
+            ;;
+        --) shift; break ;;
+        -?*) usage >&2; exit 2 ;;
+        *) break ;;
+    esac
+done
+
+if (($#)); then
+    mapfile -t input_lines <<<"$*"
+else
+    mapfile -t input_lines
+fi
+
+max="$(terminal_width)"
+space_w="$(text_width " ")"
+first=1
+emit() {
+    ((first)) || printf '\n'
+    first=0
+    render "$1"
+}
+
+for line in "${input_lines[@]}"; do
+    if [[ -z "$line" ]]; then
+        emit ""
+        continue
+    fi
+    read -ra words <<<"$line"
+    current="" current_w=0
+    for word in "${words[@]}"; do
+        word_w="$(text_width "$word")"
+        if [[ -z "$current" ]]; then
+            current="$word" current_w="$word_w"
+        elif ((current_w + space_w + word_w <= max)); then
+            current+=" $word"
+            current_w=$((current_w + space_w + word_w))
+        else
+            emit "$current"
+            current="$word" current_w="$word_w"
+        fi
+    done
+    emit "$current"
+done
